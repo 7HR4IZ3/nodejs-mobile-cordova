@@ -153,6 +153,9 @@ public class NodeJS extends CordovaPlugin {
       String scriptBody = data.getString(0);
       JSONObject startOptions = data.getJSONObject(1);
       this.startEngineWithScript(scriptBody, startOptions, callbackContext);
+    } else if (action.equals("startEngineWithArgs")) {
+      JSONArray startArgs = data.getJSONArray(0);
+      JSONObject startOptions = data.getJSONObject(1);
     } else if (action.equals("reset")) {
       this.setReset();
     } else {
@@ -218,6 +221,20 @@ public class NodeJS extends CordovaPlugin {
     }
   }
 
+  private String[] convertJSONArray(JSONArray arr) {
+    List<String> list = new ArrayList<String>();
+    for (int i = 0; i < arr.length(); i++) {
+      try {
+        String item = arr.getString(i);
+        list.add(item);
+      } catch (JSONException e) {}
+    }
+
+    String[] res = new String[list.size()];
+    return list.toArray(res);
+  }
+
+
   private boolean setAllChannelsListener(final CallbackContext callbackContext) {
     Log.v(LOGTAG, "setAllChannelsListener");
     NodeJS.allChannelListenerContext = callbackContext;
@@ -275,6 +292,66 @@ public class NodeJS extends CordovaPlugin {
       }
     }).start();
   }
+
+  private void startEngineWithArgs(
+    final JSONArray startArgs,
+    final JSONObject startOptions,
+    final CallbackContext callbackContext
+  ) {
+    Log.d(LOGTAG, "StartEngineWithArgs: " + startArgs);
+
+    if (NodeJS.engineAlreadyStarted == true) {
+      sendResult(false, "Engine already started", callbackContext);
+      return;
+    }
+
+    if (startArgs == null || startArgs.length() <= 0) {
+      sendResult(false, "Arguments is empty", callbackContext);
+      return;
+    }
+
+    final boolean redirectOutputToLogcat =
+      getOptionRedirectOutputToLogcat(startOptions);
+
+    new Thread(new Runnable() {
+      @Override
+      public void run() {
+        waitForInit();
+
+        if (ioe != null) {
+          sendResult(
+            false, "Initialization failed: " + ioe.toString(),
+            callbackContext
+          );
+          return;
+        }
+
+        synchronized(onlyOneEngineStartingAtATimeLock) {
+          if (NodeJS.engineAlreadyStarted == true) {
+            sendResult(false, "Engine already started", callbackContext);
+            return;
+          }
+          NodeJS.engineAlreadyStarted = true;
+        }
+
+        sendResult(true, "", callbackContext);
+
+        try {
+          startNodeWithArguments(
+            convertJSONArray(startArgs),
+            NodeJS.nodePath,
+            redirectOutputToLogcat
+          );
+        } catch (Exception err) {
+          sendResult(false, err.toString(), callbackContext);
+        }
+
+        Log.d(LOGTAG, "Finished Executing: " + startArgs);
+        NodeJS.engineAlreadyStarted = false;
+      }
+    }).start();
+  }
+
 
   private void startEngineWithScript(final String scriptBody, final JSONObject startOptions,
                                         final CallbackContext callbackContext) {
