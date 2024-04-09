@@ -3,6 +3,8 @@
 const EventEmitter = require("events");
 const NativeBridge = process._linkedBinding("cordova_bridge");
 
+const MESSAGE_ID = 1000;
+
 /**
  * Built-in events channel to exchange events between the Cordova app
  * and the Node.js app. It allows to emit user defined event types with
@@ -25,23 +27,22 @@ const SYSTEM_CHANNEL = "_SYSTEM_";
 class MessageCodec {
   // This is a 'private' constructor, should only be used by this class
   // static methods.
-  constructor(_event, ..._payload) {
+  constructor(_event, stringify, ..._payload) {
     this.event = _event;
-    this.payload = JSON.stringify(_payload);
+    this.payload = stringify(_payload);
   }
 
   // Serialize the message payload and the message.
-  static serialize(event, ...payload) {
-    const envelope = new MessageCodec(event, ...payload);
+  static serialize(event, stringify, ...payload) {
     // Return the serialized message, that can be sent through a channel.
-    return JSON.stringify(envelope);
+    return stringify({ event, payload: stringify(payload) });
   }
 
   // Deserialize the message and the message payload.
-  static deserialize(message) {
-    var envelope = JSON.parse(message);
+  static deserialize(message, parse) {
+    var envelope = parse(message);
     if (typeof envelope.payload !== "undefined") {
-      envelope.payload = JSON.parse(envelope.payload);
+      envelope.payload = parse(envelope.payload);
     }
     return envelope;
   }
@@ -78,8 +79,13 @@ class ChannelSuper extends EventEmitter {
  * Includes the previously available 'send' method for 'message' events.
  */
 class EventChannel extends ChannelSuper {
+  #stringify = JSON.stringify;
+  #parse = JSON.parse;
+
   post(event, ...msg) {
-    NativeBridge.sendMessage(this.name, MessageCodec.serialize(event, ...msg));
+    NativeBridge.sendMessage(
+      this.name, MessageCodec.serialize(event, this.#stringify, ...msg)
+    );
   }
 
   // Posts a 'message' event, to be backward compatible with old code.
@@ -87,10 +93,26 @@ class EventChannel extends ChannelSuper {
     this.post("message", ...msg);
   }
 
+  recieve(event, ...message) {
+    const messageID = MESSAGE_ID++;
+    return new Promise((resolve) => {
+      this.once(messageID, resolve);
+      this.post(event, messageID, ...message);
+    });
+  }
+
   processData(data) {
     // The data contains the serialized message envelope.
-    var envelope = MessageCodec.deserialize(data);
+    var envelope = MessageCodec.deserialize(data, this.#parse);
     this.emitWrapper(envelope.event, ...envelope.payload);
+  }
+
+  setStringify(stringify) {
+    this.#stringify = stringify;
+  }
+
+  setParse(parse) {
+    this.#parse = parse;
   }
 }
 
@@ -149,7 +171,7 @@ class SystemChannel extends ChannelSuper {
           () => {
             NativeBridge.sendMessage(_this.name, releaseMessage);
           },
-          _this.listenerCount("pause"), // A lock for each current event listener. All listeners need to call release().
+          _this.listenerCount("pause") // A lock for each current event listener. All listeners need to call release().
         );
         _this.emitLocal("pause", eventLock);
       });
@@ -214,7 +236,14 @@ NativeBridge.sendMessage(SYSTEM_CHANNEL, "ready-for-app-events");
 const eventChannel = new EventChannel(EVENT_CHANNEL);
 registerChannel(eventChannel);
 
+function createChannel(channelName) {
+  const channel = new EventChannel(channelName);
+  registerChannel(channel);
+  return channel;
+}
+
 module.exports = exports = {
+  createChannel,
   app: systemChannel,
   channel: eventChannel,
 };
