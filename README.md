@@ -34,9 +34,13 @@ These methods can be called from the Cordova javascript code directly:
 
 - `nodejs.start`
 - `nodejs.startWithScript`
+- `nodejs.startWithArgs`
+- `nodejs.createChannel`
 - `nodejs.channel.on`
 - `nodejs.channel.post`
 - `nodejs.channel.setListener`
+- `nodejs.channel.setStringify`
+- `nodejs.channel.setParse`
 - `nodejs.channel.send`
 
 > `nodejs.channel.setListener(callback)` is equivalent to `nodejs.channel.on('message',callback)` and `nodejs.channel.send(msg)` is equivalent to `nodejs.channel.post('message',msg)`. They are maintained for backward compatibility purposes.
@@ -60,6 +64,16 @@ Starts the nodejs-mobile runtime thread with a file inside the `nodejs-project` 
 | options    | `[StartupOptions](#cordova.StartupOptions)` |
 
 Starts the nodejs-mobile runtime thread with a script body.
+
+### nodejs.startWithArgs(args, callback [, options])
+
+| Param      | Type                                        |
+| ---------- | ------------------------------------------- |
+| args | `array`                                    |
+| callback   | `function`                                  |
+| options    | `[StartupOptions](#cordova.StartupOptions)` |
+
+Starts the nodejs-mobile runtime thread with custom arguments excluding `"node"`
 
 ### nodejs.channel.on(event, callback)
 
@@ -87,6 +101,30 @@ Raises a user-defined event on the nodejs-mobile side.
 
 Registers a callback for 'message' events raised from the nodejs-mobile side.
 It is an alias for `nodejs.channel.on('message', listenerCallback);`.
+
+### nodejs.channel.setStringify(stringifyCallback)
+
+| Param            | Type                                   |
+| ---------------- | -------------------------------------- |
+| stringifyCallback | `[function](#cordova.jsonCallback)` |
+
+Registers a callback for second argument to `JSON.stringify`.
+
+### nodejs.channel.setParse(stringifyCallback)
+
+| Param            | Type                                   |
+| ---------------- | -------------------------------------- |
+| stringifyCallback | `[function](#cordova.jsonCallback)` |
+
+Registers a callback for second argument to `JSON.parse`.
+
+### nodejs.createChannel(channelName)
+
+| Param   | Type                                                                                        |
+| ------- | ------------------------------------------------------------------------------------------- |
+| channelName | `string` |
+
+Creates, registers and returns an `EventChannel` with the same api as `nodejs.channel`.
 
 ### nodejs.channel.send(message)
 
@@ -117,8 +155,11 @@ var cordova = require("cordova-bridge");
 - `cordova.channel.on`
 - `cordova.channel.post`
 - `cordova.channel.send`
+- `cordova.channel.setStringify`
+- `cordova.channel.setParse`
 - `cordova.app.on`
 - `cordova.app.datadir`
+- `cordova.createChannel`
 
 > `cordova.channel.send(msg)` is equivalent to `cordova.channel.post('message',msg)`. It is maintained for backward compatibility purposes.
 
@@ -154,6 +195,30 @@ Raises a user-defined event on the cordova side.
 
 Raises a 'message' event on the cordova side.
 It is an alias for `cordova.channel.post('message', message);`.
+
+### cordova.channel.setStringify(stringifyCallback)
+
+| Param            | Type                                   |
+| ---------------- | -------------------------------------- |
+| stringifyCallback | `[function](#cordova.jsonCallback)` |
+
+Registers a callback for second argument to `JSON.stringify`.
+
+### cordova.channel.setParse(stringifyCallback)
+
+| Param            | Type                                   |
+| ---------------- | -------------------------------------- |
+| stringifyCallback | `[function](#cordova.jsonCallback)` |
+
+Registers a callback for second argument to `JSON.parse`.
+
+### cordova.createChannel(channelName)
+
+| Param   | Type                                                                                        |
+| ------- | ------------------------------------------------------------------------------------------- |
+| channelName | `string` |
+
+Creates, registers and returns an `EventChannel` with the same api as `cordova.channel`.
 
 ### cordova.app.on(event, callback)
 
