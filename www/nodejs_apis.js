@@ -5,6 +5,7 @@
 const EventEmitter = require("./nodejs_events");
 
 const EVENT_CHANNEL = "_EVENTS_";
+const MESSAGE_ID = 10000;
 
 var channels = {};
 
@@ -17,23 +18,22 @@ var channels = {};
 class MessageCodec {
   // This is a 'private' constructor, should only be used by this class
   // static methods.
-  constructor(_event, ..._payload) {
+  constructor(_event, stringify, ..._payload) {
     this.event = _event;
-    this.payload = JSON.stringify(_payload);
+    this.payload = stringify(_payload);
   }
 
   // Serialize the message payload and the message.
-  static serialize(event, ...payload) {
-    const envelope = new MessageCodec(event, ...payload);
+  static serialize(event, stringify, ...payload) {
     // Return the serialized message, that can be sent through a channel.
-    return JSON.stringify(envelope);
+    return stringify({ event, payload: stringify(payload) });
   }
 
   // Deserialize the message and the message payload.
-  static deserialize(message) {
-    var envelope = JSON.parse(message);
+  static deserialize(message, parse) {
+    const envelope = parse(message);
     if (typeof envelope.payload !== "undefined") {
-      envelope.payload = JSON.parse(envelope.payload);
+      envelope.payload = parse(envelope.payload);
     }
     return envelope;
   }
@@ -63,16 +63,27 @@ class ChannelSuper extends EventEmitter {
  * Includes the previously available 'send' method for 'message' events.
  */
 class EventChannel extends ChannelSuper {
+  #stringify = JSON.stringify;
+  #parse = JSON.parse;
+
   post(event, ...msg) {
     cordova.exec(null, null, "NodeJS", "sendMessageToNode", [
       this.name,
-      MessageCodec.serialize(event, ...msg),
+      MessageCodec.serialize(event, this.#stringify, ...msg),
     ]);
   }
 
   // Posts a 'message' event, to be backward compatible with old code.
   send(...msg) {
     this.post("message", ...msg);
+  }
+
+  recieve(event, ...message) {
+    const messageID = MESSAGE_ID++;
+    return new Promise((resolve) => {
+      this.once(messageID, resolve);
+      this.post(event, messageID, ...message);
+    });
   }
 
   // Sets a listener on the 'message' event, to be backward compatible with old code.
@@ -82,8 +93,16 @@ class EventChannel extends ChannelSuper {
 
   processData(data) {
     // The data contains the serialized message envelope.
-    var envelope = MessageCodec.deserialize(data);
+    var envelope = MessageCodec.deserialize(data, this.#parse);
     this.emitLocal(envelope.event, ...envelope.payload);
+  }
+
+  setStringify(stringify) {
+    this.#stringify = stringify;
+  }
+
+  setParse(parse) {
+    this.#parse = parse;
   }
 }
 
@@ -110,7 +129,7 @@ cordova.exec(
   allChannelsListener,
   "NodeJS",
   "setAllChannelsListener",
-  null,
+  null
 );
 
 /**
@@ -134,7 +153,7 @@ function startEngine(command, args, callback) {
     },
     "NodeJS",
     command,
-    [].concat(args),
+    [].concat(args)
   );
 }
 
@@ -151,8 +170,23 @@ function startWithScript(script, callback, options) {
   startEngine("startEngineWithScript", [script, options], callback);
 }
 
+function startWithArgs(args, callback, options) {
+  if (!Array.isArray(args))
+    return callback("Args must be an Array");
+
+  options = options || {};
+  if (args[0] !== "node") (args = ["node", ...args]);
+  startEngine("startEngineWithArgs", [args, options], callback);
+}
+
 function reset(callback) {
   startEngine("reset", [], callback);
+}
+
+function createChannel(channelName) {
+  const channel = new EventChannel(channelName);
+  registerChannel(channel);
+  return channel;
 }
 
 const eventChannel = new EventChannel(EVENT_CHANNEL);
@@ -160,7 +194,10 @@ registerChannel(eventChannel);
 
 module.exports = exports = {
   start,
+  startWithArgs,
   startWithScript,
+
   reset,
+  createChannel,
   channel: eventChannel,
 };
